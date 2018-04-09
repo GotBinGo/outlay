@@ -1,132 +1,258 @@
-buildscript {
-    repositories {
-        maven { url 'https://maven.fabric.io/public' }
-    }
+import java.text.SimpleDateFormat
 
-    dependencies {
-        classpath 'io.fabric.tools:gradle:1.+'
-    }
-}
 apply plugin: 'com.android.application'
+apply plugin: 'io.fabric'
 
-repositories {
-    maven { url 'https://maven.fabric.io/public' }
+def versionMajor = 2
+def versionMinor = 3
+def versionPatch = 0
+def versionBuild = 4
+
+static def buildTime() {
+    def df = new SimpleDateFormat("yyyyMMdd HH:mm 'UTC'")
+    df.setTimeZone(TimeZone.getTimeZone("UTC"))
+    return df.format(new Date())
 }
 
-apply plugin: 'com.neenbedankt.android-apt'
-apply plugin: 'me.tatarka.retrolambda'
+static def gitSha() {
+    return 'git rev-parse --short HEAD'.execute().text.trim()
+}
 
-def cfg = rootProject.ext.configuration
-def libs = rootProject.ext.libraries
 
 android {
-    compileSdkVersion cfg.compileVersion
-    buildToolsVersion cfg.buildToolsVersion
-
+    compileSdkVersion 26
+    buildToolsVersion '27.0.0'
     defaultConfig {
-        applicationId cfg.package
-        minSdkVersion cfg.minSdk
-        targetSdkVersion cfg.targetSdk
-        versionCode cfg.version_code
-        versionName cfg.version_name
+        applicationId "org.gnucash.android"
+        testApplicationId 'org.gnucash.android.test'
+        minSdkVersion 19
+        targetSdkVersion 26
+        versionCode versionMajor * 10000 + versionMinor * 1000 + versionPatch * 100 + versionBuild
+        versionName "${versionMajor}.${versionMinor}.${versionPatch}"
+        resValue "string", "app_version_name", "${versionName}"
+        resValue "string", "app_minor_version", "${versionMinor}"
+        buildConfigField "boolean", "CAN_REQUEST_RATING", "false"
+        buildConfigField "String", "BUILD_TIME", "\"${buildTime()}\""
+
+        multiDexEnabled true
+        testInstrumentationRunner "org.gnucash.android.test.ui.util.GnucashAndroidTestRunner"
+
     }
 
-    def propsFile = rootProject.file('release.properties')
-    def props = new Properties()
-    if (propsFile.exists()) {
-        props.load(new FileInputStream(propsFile))
+    packagingOptions {
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'LICENSE.txt'
+        exclude 'META-INF/NOTICE.txt'
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            outputFileName = "GnucashAndroid_v${variant.versionName}.apk"
+        }
     }
 
     signingConfigs {
-        release {
-            if (propsFile.exists()) {
-                storeFile file(props['RELEASE_STORE_FILE'])
-                storePassword props['RELEASE_STORE_PASSWORD']
-                keyAlias props['RELEASE_KEY_ALIAS']
-                keyPassword props['RELEASE_KEY_PASSWORD']
+        debug {
+            storeFile file("../debug.keystore")
+        }
+
+        if(project.hasProperty("RELEASE_STORE_FILE")) {
+            release {
+                storeFile       file(RELEASE_STORE_FILE)
+                storePassword   RELEASE_STORE_PASSWORD
+                keyAlias        RELEASE_KEY_ALIAS
+                keyPassword     RELEASE_KEY_PASSWORD
             }
         }
     }
 
     buildTypes {
-        debug {
-            buildConfigField "boolean", "USE_ANALYTICS", "false"
-        }
-        staging {
-            buildConfigField "boolean", "USE_ANALYTICS", "false"
-        }
+        //todo re-enable proguard and test coverage
         release {
-            buildConfigField "boolean", "USE_ANALYTICS", "true"
-
-            signingConfig signingConfigs.release
-
-            minifyEnabled false
+//            minifyEnabled true
+//            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (project.hasProperty("RELEASE_STORE_FILE")){
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
+        }
+        debug {
+            debuggable true
+            minifyEnabled false
+//            testCoverageEnabled true
+            signingConfig signingConfigs.debug
+        }
+    }
+    lintOptions {
+        abortOnError false
+    }
+
+    flavorDimensions "stability"
+
+    productFlavors {
+        development {
+            applicationId 'org.gnucash.android.devel'
+            testApplicationId 'org.gnucash.android.devel.test'
+            resValue "string", "app_name", "GnuCash-devel"
+            versionName "${versionMajor}.${versionMinor}.${versionPatch}-dev${versionBuild}_r${gitSha()}"
+            resValue "string", "app_version_name", "${versionName}"
+
+            resValue "string", "dropbox_app_key", "dhjh8ke9wf05948"
+            resValue "string", "dropbox_app_secret", "h2t9fphj3nr4wkw"
+            resValue "string", "manifest_dropbox_app_key", "db-dhjh8ke9wf05948"
+        }
+
+        beta {
+            resValue "string", "app_name", "GnuCash - beta"
+            versionName "${versionMajor}.${versionMinor}.${versionPatch}-beta${versionBuild}"
+            resValue "string", "app_version_name", "${versionName}"
+
+            if (project.hasProperty("RELEASE_DROPBOX_APP_KEY")){
+                resValue "string", "dropbox_app_key", RELEASE_DROPBOX_APP_KEY
+                resValue "string", "dropbox_app_secret", RELEASE_DROPBOX_APP_SECRET
+                resValue "string", "manifest_dropbox_app_key", "db-${RELEASE_DROPBOX_APP_KEY}"
+            } else {
+                resValue "string", "dropbox_app_key", "dhjh8ke9wf05948"
+                resValue "string", "dropbox_app_secret", "h2t9fphj3nr4wkw"
+                resValue "string", "manifest_dropbox_app_key", "db-dhjh8ke9wf05948"
+            }
+        }
+
+        production {
+            resValue "string", "app_name", "GnuCash"
+            buildConfigField "boolean", "CAN_REQUEST_RATING", "true"
+
+            if (project.hasProperty("RELEASE_DROPBOX_APP_KEY")){
+                resValue "string", "dropbox_app_key", RELEASE_DROPBOX_APP_KEY
+                resValue "string", "dropbox_app_secret", RELEASE_DROPBOX_APP_SECRET
+                resValue "string", "manifest_dropbox_app_key", "db-${RELEASE_DROPBOX_APP_KEY}"
+            } else {
+                resValue "string", "dropbox_app_key", "dhjh8ke9wf05948"
+                resValue "string", "dropbox_app_secret", "h2t9fphj3nr4wkw"
+                resValue "string", "manifest_dropbox_app_key", "db-dhjh8ke9wf05948"
+            }
         }
     }
 
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+
+    compileOptions { //we want switch with strings during xml parsing
+        encoding "UTF-8"
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
     }
 
-    packagingOptions {
-        //<div>Icons made by <a href="http://www.flaticon.com/authors/gregor-cresnar" title="Gregor Cresnar">Gregor Cresnar</a> from <a href="http://www.flaticon.com" title="Flaticon">www.flaticon.com</a> is licensed by <a href="http://creativecommons.org/licenses/by/3.0/" title="Creative Commons BY 3.0" target="_blank">CC 3.0 BY</a></div>
-        exclude 'META-INF/services/javax.annotation.processing.Processor'
-        exclude 'META-INF/DEPENDENCIES.txt'
-        exclude 'META-INF/DEPENDENCIES'
-        exclude 'META-INF/dependencies.txt'
-        exclude 'META-INF/LICENSE.txt'
-        exclude 'META-INF/LICENSE'
-        exclude 'META-INF/license.txt'
-        exclude 'META-INF/LGPL2.1'
-        exclude 'META-INF/NOTICE.txt'
-        exclude 'META-INF/NOTICE'
-        exclude 'META-INF/notice.txt'
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
+}
+
+/**
+ * Create the Crashlytics properties file when building on CI
+ * @return
+ */
+def initCrashlyticsPropertiesIfNeeded() {
+    def propertiesFile = file('fabric.properties')
+    if (!propertiesFile.exists()) {
+        def commentMessage = "This is autogenerated crashlytics property from system environment to prevent key to be committed to source control."
+        ant.propertyfile(file: "fabric.properties", comment: commentMessage) { //the keys added here are invalid, just placeholders to make builds pass
+            entry(key: "apiSecret", value: "bd4e83a9a4c35fbf1fbe8d9ccce9443eebb9d5835605f9d06767850e0f1e5b22")
+            entry(key: "apiKey", value: "46fe045d00d4ad8a71014c53567be3368e10bd64")
+        }
+    }
+}
+
+afterEvaluate {
+    apply plugin: 'spoon'
+    spoon {
+        debug = true
+        grantAllPermissions = true
+        codeCoverage = true
+    }
+    initCrashlyticsPropertiesIfNeeded()
+}
+
+
+def androidSupportVersion       = "26.0.1"
+def androidEspressoVersion      = "3.0.0"
+def androidSupportTestVersion   = "1.0.0"
+
+repositories{
+    flatDir{
+        dirs 'libs'
     }
 }
 
 dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
-    compile project(':domain')
+    compile 'com.github.nextcloud:android-library:1.0.31'
+    compile('com.android.support:support-v4:'       + androidSupportVersion,
+            'com.android.support:appcompat-v7:'     + androidSupportVersion,
+            'com.android.support:design:'           + androidSupportVersion,
+            'com.android.support:cardview-v7:'      + androidSupportVersion,
+            'com.android.support:preference-v7:'    + androidSupportVersion,
+            'com.android.support:recyclerview-v7:'  + androidSupportVersion,
+            'com.code-troopers.betterpickers:library:3.1.0',
+            'org.jraf:android-switch-backport:2.0.1@aar',
+            'com.github.PhilJay:MPAndroidChart:v2.1.3',
+            'joda-time:joda-time:2.9.4',
+            'com.google.android.gms:play-services-drive:9.6.1',
+            'io.github.kobakei:ratethisapp:1.1.3',
+            'com.squareup:android-times-square:1.6.5@aar',
+            'com.github.techfreak:wizardpager:1.0.3',
+            'net.objecthunter:exp4j:0.4.7',
+            'org.apache.jackrabbit:jackrabbit-webdav:2.13.3',
+            'com.dropbox.core:dropbox-core-sdk:3.0.3',
+            'com.android.support:multidex:1.0.1'
+    )
 
-    //Google
-    apt "com.google.dagger:dagger-compiler:${libs.dagger}"
+    debugCompile 'com.facebook.stetho:stetho:1.5.0'
 
-    //Support
-    compile "com.android.support:support-v13:${libs.supportVersion}"
-    compile "com.android.support:appcompat-v7:${libs.supportVersion}"
-    compile "com.android.support:design:${libs.supportVersion}"
-    compile "com.android.support:cardview-v7:${libs.supportVersion}"
-    compile "com.android.support:recyclerview-v7:${libs.supportVersion}"
+    compile 'com.jakewharton:butterknife:8.8.1'
+    annotationProcessor 'com.jakewharton:butterknife-compiler:8.8.1'
 
-    //Rx
-    compile "io.reactivex:rxandroid:${libs.rxandroid}"
-
-    //UI
-    compile('com.mikepenz:materialdrawer:5.9.1@aar') {
-        transitive = true
+    compile ('com.uservoice:uservoice-android-sdk:1.2.6') {
+        exclude module: 'commons-logging'
+        exclude module: 'httpcore'
+        exclude module: 'httpclient'
     }
-    compile 'com.mikepenz:material-design-iconic-typeface:+@aar'
 
-    compile 'com.jakewharton:butterknife:7.0.1'
+    compile('com.crashlytics.sdk.android:crashlytics:2.6.7@aar') {
+        transitive = true;
+    }
 
-    compile "com.github.johnkil.print:print:1.3.1"
-    compile(group: 'uz.shift', name: 'colorpicker', version: '0.5', ext: 'aar')
-    compile 'com.github.PhilJay:MPAndroidChart:v3.0.1'
-    compile 'com.rengwuxian.materialedittext:library:2.1.4'
-    compile 'com.github.castorflex.smoothprogressbar:library-circular:1.2.0'
-    compile 'com.afollestad.material-dialogs:core:0.9.4.5'
-    compile 'com.hannesdorfmann.mosby:mvp:2.0.1'
 
-    compile "com.google.firebase:firebase-core:${libs.firebase}"
-    compile "com.google.firebase:firebase-auth:${libs.firebase}"
-    compile "com.google.firebase:firebase-database:${libs.firebase}"
+    testImplementation 'org.robolectric:robolectric:3.5.1'
 
-    compile 'ca.barrenechea.header-decor:header-decor:0.2.8'
+    testCompile(
+            'junit:junit:4.12',
+            'joda-time:joda-time:2.9.4',
+            'org.assertj:assertj-core:1.7.1'
+    )
+    testCompile 'org.robolectric:shadows-multidex:3.0'
 
-    releaseCompile "com.google.firebase:firebase-crash:${libs.firebase}"
-    stagingCompile "com.google.firebase:firebase-crash:${libs.firebase}"
+    androidTestCompile ('com.android.support:support-annotations:'  + androidSupportVersion,
+                        'com.android.support.test:runner:'          + androidSupportTestVersion,
+                        'com.android.support.test:rules:'           + androidSupportTestVersion,
+                        'com.android.support.test.espresso:espresso-core:'      + androidEspressoVersion,
+                        'com.android.support.test.espresso:espresso-intents:'   + androidEspressoVersion,
+            //the following are only added so that the app and test version both us the same versions
+                        'com.android.support:appcompat-v7:'     + androidSupportVersion,
+                        'com.android.support:design:'           + androidSupportVersion)
+    androidTestCompile ('com.android.support.test.espresso:espresso-contrib:'   + androidEspressoVersion) {
+        exclude group: 'com.android.support', module: 'support-v4'
+        exclude module: 'recyclerview-v7'
+    }
+
+    androidTestCompile('com.squareup.assertj:assertj-android:1.1.1'){
+        exclude group: 'com.android.support', module:'support-annotations'
+    }
+
+    androidTestCompile 'com.squareup.spoon:spoon-client:1.6.4'
 }
-
-apply plugin: 'com.google.gms.google-services'
