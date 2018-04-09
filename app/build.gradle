@@ -39,12 +39,10 @@ android {
 
     signingConfigs {
         release {
-            if (propsFile.exists()) {
-                storeFile file(props['RELEASE_STORE_FILE'])
-                storePassword props['RELEASE_STORE_PASSWORD']
-                keyAlias props['RELEASE_KEY_ALIAS']
-                keyPassword props['RELEASE_KEY_PASSWORD']
-            }
+			storeFile file("debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
         }
     }
 
@@ -118,7 +116,7 @@ dependencies {
     compile 'com.github.castorflex.smoothprogressbar:library-circular:1.2.0'
     compile 'com.afollestad.material-dialogs:core:0.9.4.5'
     compile 'com.hannesdorfmann.mosby:mvp:2.0.1'
-
+	
     compile "com.google.firebase:firebase-core:${libs.firebase}"
     compile "com.google.firebase:firebase-auth:${libs.firebase}"
     compile "com.google.firebase:firebase-database:${libs.firebase}"
